@@ -1,0 +1,168 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define K 8
+
+typedef struct _Endereco Endereco;
+
+struct _Endereco
+{
+	char logradouro[72];
+	char bairro[72];
+	char cidade[72];
+	char uf[72];
+	char sigla[2];
+	char cep[8];
+	char lixo[2];
+};
+
+int compara(const void *a, const void *b)
+{
+	return strncmp(((Endereco*)a)->cep, ((Endereco*)b)->cep, 8);
+}
+
+void intercala(const char *arq_a, const char *arq_b, const char *arq_saida)
+{
+	FILE *a, *b, *saida;
+	Endereco ea, eb;
+	int leu_a, leu_b;
+
+	a = fopen(arq_a, "rb");
+	b = fopen(arq_b, "rb");
+	saida = fopen(arq_saida, "wb");
+
+	leu_a = fread(&ea, sizeof(Endereco), 1, a);
+	leu_b = fread(&eb, sizeof(Endereco), 1, b);
+
+	while(leu_a && leu_b)
+	{
+		if(compara(&ea, &eb) <= 0)
+		{
+			fwrite(&ea, sizeof(Endereco), 1, saida);
+			leu_a = fread(&ea, sizeof(Endereco), 1, a);
+		}
+		else
+		{
+			fwrite(&eb, sizeof(Endereco), 1, saida);
+			leu_b = fread(&eb, sizeof(Endereco), 1, b);
+		}
+	}
+
+	while(leu_a)
+	{
+		fwrite(&ea, sizeof(Endereco), 1, saida);
+		leu_a = fread(&ea, sizeof(Endereco), 1, a);
+	}
+
+	while(leu_b)
+	{
+		fwrite(&eb, sizeof(Endereco), 1, saida);
+		leu_b = fread(&eb, sizeof(Endereco), 1, b);
+	}
+
+	fclose(a);
+	fclose(b);
+	fclose(saida);
+}
+
+int main()
+{
+	FILE *f, *bloco;
+	Endereco *buf;
+	long total, tam_bloco, qt_lido, i;
+	char nomes[K][64];
+	char novos_nomes[K][64];
+	char nome_saida[64];
+	int ativos, novos, geracao;
+
+	f = fopen("cep.dat", "rb");
+	if(!f)
+	{
+		fprintf(stderr, "Erro ao abrir cep.dat\n");
+		return 1;
+	}
+
+	fseek(f, 0, SEEK_END);
+	total = ftell(f) / sizeof(Endereco);
+	rewind(f);
+
+	printf("Total de registros: %ld\n", total);
+
+	tam_bloco = (total + K - 1) / K;
+
+	// Etapa 1: Dividir em K blocos, ordenar e salvar
+	ativos = 0;
+	for(i = 0; i < K; i++)
+	{
+		long restante = total - i * tam_bloco;
+		long qt;
+
+		if(restante <= 0) break;
+		qt = (restante < tam_bloco) ? restante : tam_bloco;
+
+		buf = (Endereco*) malloc(qt * sizeof(Endereco));
+		if(!buf)
+		{
+			fprintf(stderr, "Erro ao alocar memoria para o bloco %ld\n", i);
+			fclose(f);
+			return 1;
+		}
+
+		qt_lido = fread(buf, sizeof(Endereco), qt, f);
+		qsort(buf, qt_lido, sizeof(Endereco), compara);
+
+		sprintf(nomes[ativos], "bloco_%02ld.dat", i);
+		bloco = fopen(nomes[ativos], "wb");
+		if(!bloco)
+		{
+			fprintf(stderr, "Erro ao criar %s\n", nomes[ativos]);
+			free(buf);
+			fclose(f);
+			return 1;
+		}
+
+		fwrite(buf, sizeof(Endereco), qt_lido, bloco);
+		fclose(bloco);
+		free(buf);
+
+		printf("Bloco %02ld criado: %s (%ld registros)\n", i, nomes[ativos], qt_lido);
+		ativos++;
+	}
+	fclose(f);
+
+	// Etapa 2: Intercalar dois a dois ate restar um unico bloco
+	geracao = 0;
+	while(ativos > 1)
+	{
+		novos = 0;
+		for(i = 0; i < ativos; i += 2)
+		{
+			if(i + 1 < ativos)
+			{
+				sprintf(nome_saida, "merge_%02d_%02ld.dat", geracao, i / 2);
+				intercala(nomes[i], nomes[i + 1], nome_saida);
+				printf("Intercalado: %s + %s -> %s\n", nomes[i], nomes[i + 1], nome_saida);
+				strcpy(novos_nomes[novos], nome_saida);
+				novos++;
+			}
+			else
+			{
+				// Numero impar de blocos: passa o ultimo sem intercalar
+				strcpy(novos_nomes[novos], nomes[i]);
+				novos++;
+			}
+		}
+
+		for(i = 0; i < novos; i++)
+		{
+			strcpy(nomes[i], novos_nomes[i]);
+		}
+		ativos = novos;
+		geracao++;
+	}
+
+	rename(nomes[0], "cep-ordenado-externo.dat");
+	printf("\nArquivo final gerado: cep-ordenado-externo.dat\n");
+	return 0;
+}
