@@ -91,7 +91,6 @@ int main()
 
 	tam_bloco = (total + K - 1) / K;
 
-	// Etapa 1: Dividir em K blocos, ordenar e salvar
 	ativos = 0;
 	for(i = 0; i < K; i++)
 	{
@@ -131,7 +130,6 @@ int main()
 	}
 	fclose(f);
 
-	// Etapa 2: Intercalar dois a dois ate restar um unico bloco
 	geracao = 0;
 	while(ativos > 1)
 	{
@@ -148,7 +146,6 @@ int main()
 			}
 			else
 			{
-				// Numero impar de blocos: passa o ultimo sem intercalar
 				strcpy(novos_nomes[novos], nomes[i]);
 				novos++;
 			}
@@ -162,7 +159,7 @@ int main()
 		geracao++;
 	}
 
-	rename(nomes[0], "cep-ordenado-externo.dat");
-	printf("\nArquivo final gerado: cep-ordenado-externo.dat\n");
+	rename(nomes[0], "cep-ordenado.dat");
+	printf("\nArquivo final gerado: cep-ordenado.dat\n");
 	return 0;
 }
